@@ -1,0 +1,14 @@
+
+{
+  "website_url": "https://example.com",
+  "app_name": "My Android App",
+  "package_name": "com.example.myapp",
+  "version_name": "1.0",
+  "splash_color": "#101522",
+  "features": {
+    "back_button": true,
+    "fullscreen": false,
+    "download": true,
+    "notification": false
+  }
+}
