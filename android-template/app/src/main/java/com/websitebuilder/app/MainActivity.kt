@@ -1,4 +1,3 @@
-
 package com.websitebuilder.app
 
 import android.app.Activity
@@ -16,6 +15,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ImageView
 import android.widget.Toast
 import org.json.JSONObject
 
@@ -32,7 +32,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        loadConfiguration()
+        if (!loadConfiguration()) return
 
         title = appName
 
@@ -40,20 +40,11 @@ class MainActivity : Activity() {
             enableFullscreen()
         }
 
-        webView = WebView(this)
-        setContentView(webView)
-
-        setupWebView()
-
-        if (savedInstanceState != null) {
-            webView.restoreState(savedInstanceState)
-        } else {
-            webView.loadUrl(websiteUrl)
-        }
+        showSplashScreen(savedInstanceState)
     }
 
-    private fun loadConfiguration() {
-        try {
+    private fun loadConfiguration(): Boolean {
+        return try {
             val json = assets.open("build-config.json")
                 .bufferedReader()
                 .use { it.readText() }
@@ -80,6 +71,8 @@ class MainActivity : Activity() {
                 "Invalid HTTPS website URL"
             }
 
+            true
+
         } catch (e: Exception) {
             Toast.makeText(
                 this,
@@ -88,6 +81,51 @@ class MainActivity : Activity() {
             ).show()
 
             finish()
+            false
+        }
+    }
+
+    private fun showSplashScreen(savedInstanceState: Bundle?) {
+
+        if (savedInstanceState != null) {
+            openWebsite(savedInstanceState)
+            return
+        }
+
+        try {
+            val splashView = ImageView(this)
+
+            val splashImage = assets.open("splash.png")
+                .use { android.graphics.BitmapFactory.decodeStream(it) }
+
+            splashView.setImageBitmap(splashImage)
+            splashView.scaleType = ImageView.ScaleType.FIT_CENTER
+            splashView.setBackgroundColor(android.graphics.Color.BLACK)
+
+            setContentView(splashView)
+
+            splashView.postDelayed({
+                if (!isFinishing && !isDestroyed) {
+                    openWebsite(null)
+                }
+            }, 2000)
+
+        } catch (e: Exception) {
+            openWebsite(null)
+        }
+    }
+
+    private fun openWebsite(savedInstanceState: Bundle?) {
+
+        webView = WebView(this)
+        setContentView(webView)
+
+        setupWebView()
+
+        if (savedInstanceState != null) {
+            webView.restoreState(savedInstanceState)
+        } else {
+            webView.loadUrl(websiteUrl)
         }
     }
 
@@ -162,10 +200,7 @@ class MainActivity : Activity() {
                     request.setDescription("Downloading from $appName")
                     request.setMimeType(mimeType)
 
-                    request.addRequestHeader(
-                        "User-Agent",
-                        userAgent
-                    )
+                    request.addRequestHeader("User-Agent", userAgent)
 
                     val cookie = CookieManager.getInstance()
                         .getCookie(url)
