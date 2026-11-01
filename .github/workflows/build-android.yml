@@ -3,6 +3,36 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      app_name:
+        description: "Android App Name"
+        required: true
+        type: string
+        default: "My Website App"
+
+      website_url:
+        description: "Website HTTPS URL"
+        required: true
+        type: string
+        default: "https://example.com"
+
+      back_button:
+        description: "Enable Back Button"
+        required: true
+        type: boolean
+        default: true
+
+      fullscreen:
+        description: "Enable Fullscreen"
+        required: true
+        type: boolean
+        default: false
+
+      download:
+        description: "Enable Website Downloads"
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -35,10 +65,107 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
+      - name: Check Required Image Files
+        run: |
+          test -f app-assets/app-icon.png
+          test -f app-assets/splash.png
+          echo "Icon and Splash files found."
+
+      - name: Prepare App Configuration and Images
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          WEBSITE_URL: ${{ inputs.website_url }}
+          BACK_BUTTON: ${{ inputs.back_button }}
+          FULLSCREEN: ${{ inputs.fullscreen }}
+          DOWNLOAD: ${{ inputs.download }}
+        run: |
+          python3 -m pip install --user Pillow
+
+          python3 <<'PY'
+          import os
+          import json
+          import shutil
+          from pathlib import Path
+          from urllib.parse import urlparse
+          from xml.sax.saxutils import escape
+          from PIL import Image, ImageOps
+
+          app_name = os.environ["APP_NAME"].strip()
+          website_url = os.environ["WEBSITE_URL"].strip()
+
+          if not app_name:
+              raise SystemExit("App Name cannot be empty.")
+
+          parsed = urlparse(website_url)
+          if parsed.scheme != "https" or not parsed.netloc:
+              raise SystemExit("Website URL must be a valid HTTPS URL.")
+
+          root = Path("android-template/app/src/main")
+          assets = root / "assets"
+          res = root / "res"
+
+          assets.mkdir(parents=True, exist_ok=True)
+
+          shutil.copy2("app-assets/splash.png", assets / "splash.png")
+
+          config = {
+              "app_name": app_name,
+              "website_url": website_url,
+              "features": {
+                  "back_button": os.environ["BACK_BUTTON"].lower() == "true",
+                  "fullscreen": os.environ["FULLSCREEN"].lower() == "true",
+                  "download": os.environ["DOWNLOAD"].lower() == "true"
+              }
+          }
+
+          with open(assets / "build-config.json", "w", encoding="utf-8") as f:
+              json.dump(config, f, ensure_ascii=False, indent=2)
+
+          values = res / "values"
+          values.mkdir(parents=True, exist_ok=True)
+
+          strings_xml = (
+              '<?xml version="1.0" encoding="utf-8"?>\n'
+              '<resources>\n'
+              f'    <string name="app_name">{escape(app_name)}</string>\n'
+              '</resources>\n'
+          )
+
+          (values / "strings.xml").write_text(strings_xml, encoding="utf-8")
+
+          with Image.open("app-assets/app-icon.png") as original:
+              icon = ImageOps.fit(
+                  original.convert("RGBA"),
+                  (512, 512),
+                  method=Image.Resampling.LANCZOS
+              )
+
+              sizes = {
+                  "mipmap-mdpi": 48,
+                  "mipmap-hdpi": 72,
+                  "mipmap-xhdpi": 96,
+                  "mipmap-xxhdpi": 144,
+                  "mipmap-xxxhdpi": 192
+              }
+
+              for folder, size in sizes.items():
+                  target = res / folder
+                  target.mkdir(parents=True, exist_ok=True)
+
+                  resized = icon.resize(
+                      (size, size),
+                      Image.Resampling.LANCZOS
+                  )
+
+                  resized.save(target / "ic_launcher.png")
+                  resized.save(target / "ic_launcher_round.png")
+
+          print("App configuration, icon and splash prepared.")
+          PY
+
       - name: Check Android Manifest XML
         working-directory: android-template
         run: |
-          echo "Checking AndroidManifest.xml..."
           python3 -c "import xml.etree.ElementTree as ET; ET.parse('app/src/main/AndroidManifest.xml'); print('XML is valid')"
 
       - name: Setup Gradle
