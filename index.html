@@ -1,0 +1,374 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#101522">
+<title>Web2APK Builder</title>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:Arial,sans-serif;
+  background:#0b1020;
+  color:#fff;
+  min-height:100vh;
+}
+header{
+  padding:20px;
+  background:#111a2d;
+  border-bottom:1px solid #27334b;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.logo{font-size:21px;font-weight:bold}
+.logo span{color:#38a5ff}
+.tag{
+  font-size:11px;
+  color:#63d6a5;
+  border:1px solid #246b54;
+  padding:6px 10px;
+  border-radius:20px;
+}
+.container{
+  max-width:850px;
+  margin:auto;
+  padding:22px 15px 50px;
+}
+.hero{text-align:center;padding:25px 5px 30px}
+.hero h1{font-size:29px;margin-bottom:10px}
+.hero h1 span{color:#36a5ff}
+.hero p{color:#98a5ba;font-size:14px;line-height:1.6}
+.card{
+  background:#121b2e;
+  border:1px solid #27344d;
+  border-radius:14px;
+  padding:20px;
+  margin-bottom:17px;
+}
+.card h2{font-size:17px;margin-bottom:18px}
+.field{margin-bottom:17px}
+label{
+  display:block;
+  font-size:13px;
+  color:#c5d0e2;
+  margin-bottom:8px;
+}
+input[type="text"],input[type="url"],input[type="color"]{
+  width:100%;
+  background:#0b1324;
+  color:#fff;
+  border:1px solid #34435e;
+  border-radius:9px;
+  padding:13px;
+  outline:none;
+  font-size:14px;
+}
+input:focus{border-color:#299cff}
+input[type="file"]{
+  width:100%;
+  padding:12px;
+  background:#0b1324;
+  border:1px dashed #40516e;
+  border-radius:9px;
+  color:#aab8ce;
+  font-size:13px;
+}
+.preview{
+  display:none;
+  width:75px;
+  height:75px;
+  object-fit:cover;
+  border-radius:15px;
+  margin-top:12px;
+}
+.settings{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.setting{
+  background:#0b1324;
+  padding:13px;
+  border:1px solid #293850;
+  border-radius:9px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font-size:13px;
+}
+.setting input{accent-color:#269cff;width:18px;height:18px}
+.btn{
+  width:100%;
+  border:0;
+  padding:16px;
+  border-radius:10px;
+  background:linear-gradient(100deg,#1686ff,#36b5ed);
+  color:white;
+  font-size:16px;
+  font-weight:bold;
+  cursor:pointer;
+}
+.btn:active{transform:scale(.99)}
+.note{
+  color:#8798b2;
+  font-size:12px;
+  line-height:1.7;
+  margin-top:14px;
+}
+.status{
+  display:none;
+  margin-top:16px;
+  padding:14px;
+  background:#0b1324;
+  border-radius:9px;
+  border:1px solid #34435e;
+  font-size:13px;
+  line-height:1.7;
+  overflow-wrap:anywhere;
+}
+footer{
+  text-align:center;
+  color:#63738c;
+  font-size:12px;
+  padding:25px;
+}
+@media(max-width:420px){
+  .settings{grid-template-columns:1fr}
+  .hero h1{font-size:25px}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo">WEB<span>2</span>APK</div>
+  <div class="tag">PERSONAL BUILDER</div>
+</header>
+
+<main class="container">
+
+  <section class="hero">
+    <h1>Website to <span>Android APK</span></h1>
+    <p>Convert your website into your own Android application.</p>
+  </section>
+
+  <section class="card">
+    <h2>01. Application Details</h2>
+
+    <div class="field">
+      <label>Website URL</label>
+      <input type="url" id="websiteUrl"
+        placeholder="https://example.com">
+    </div>
+
+    <div class="field">
+      <label>Application Name</label>
+      <input type="text" id="appName"
+        placeholder="My Android App" maxlength="40">
+    </div>
+
+    <div class="field">
+      <label>Package Name</label>
+      <input type="text" id="packageName"
+        placeholder="com.example.myapp">
+    </div>
+
+    <div class="field">
+      <label>Version Name</label>
+      <input type="text" id="versionName"
+        value="1.0">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>02. Application Appearance</h2>
+
+    <div class="field">
+      <label>Application Icon (PNG/JPG)</label>
+      <input type="file" id="appIcon"
+        accept="image/png,image/jpeg">
+      <img id="iconPreview" class="preview">
+    </div>
+
+    <div class="field">
+      <label>Splash Screen Logo (PNG/JPG)</label>
+      <input type="file" id="splashLogo"
+        accept="image/png,image/jpeg">
+      <img id="splashPreview" class="preview">
+    </div>
+
+    <div class="field">
+      <label>Splash Background Color</label>
+      <input type="color" id="splashColor"
+        value="#101522">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>03. Android Features</h2>
+
+    <div class="settings">
+
+      <label class="setting">
+        <span>Back Button Support</span>
+        <input type="checkbox" id="backButton" checked>
+      </label>
+
+      <label class="setting">
+        <span>Fullscreen Mode</span>
+        <input type="checkbox" id="fullscreen">
+      </label>
+
+      <label class="setting">
+        <span>File Download</span>
+        <input type="checkbox" id="download" checked>
+      </label>
+
+      <label class="setting">
+        <span>Push Notification</span>
+        <input type="checkbox" id="notification">
+      </label>
+
+    </div>
+    <p class="note">
+      Push Notification requires a separate notification service
+      and Android configuration.
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>04. Generate Android App</h2>
+
+    <button class="btn" id="generateBtn">
+      Generate APK
+    </button>
+
+    <div class="status" id="status"></div>
+
+    <p class="note">
+      Your application configuration will be prepared for the
+      automatic GitHub Actions build system.
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  Web2APK Builder · Personal Project
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function previewFile(inputId, previewId){
+  $(inputId).addEventListener("change", function(){
+    const file = this.files[0];
+    const preview = $(previewId);
+
+    if(!file){
+      preview.style.display = "none";
+      return;
+    }
+
+    if(!["image/png","image/jpeg"].includes(file.type)){
+      alert("Please select a PNG or JPG image.");
+      this.value = "";
+      preview.style.display = "none";
+      return;
+    }
+
+    if(file.size > 2 * 1024 * 1024){
+      alert("Image size must be under 2 MB.");
+      this.value = "";
+      preview.style.display = "none";
+      return;
+    }
+
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+  });
+}
+
+previewFile("appIcon","iconPreview");
+previewFile("splashLogo","splashPreview");
+
+$("generateBtn").addEventListener("click", function(){
+
+  const url = $("websiteUrl").value.trim();
+  const appName = $("appName").value.trim();
+  const packageName = $("packageName").value.trim();
+  const version = $("versionName").value.trim();
+
+  const status = $("status");
+
+  status.style.display = "block";
+
+  if(!url || !appName || !packageName){
+    status.textContent =
+      "Please enter Website URL, Application Name and Package Name.";
+    return;
+  }
+
+  try{
+    const parsedUrl = new URL(url);
+
+    if(parsedUrl.protocol !== "https:"){
+      throw new Error("HTTPS required");
+    }
+  }catch(e){
+    status.textContent =
+      "Please enter a valid HTTPS website URL.";
+    return;
+  }
+
+  if(!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(packageName)){
+    status.textContent = "Invalid Android Package Name.";
+    return;
+  }
+
+  if(!/^\d+(\.\d+)*$/.test(version)){
+    status.textContent = "Invalid Version Name.";
+    return;
+  }
+
+  const config = {
+    website_url: url,
+    app_name: appName,
+    package_name: packageName,
+    version_name: version,
+    splash_color: $("splashColor").value,
+    features: {
+      back_button: $("backButton").checked,
+      fullscreen: $("fullscreen").checked,
+      download: $("download").checked,
+      notification: $("notification").checked
+    },
+    created_at: new Date().toISOString()
+  };
+
+  const blob = new Blob(
+    [JSON.stringify(config,null,2)],
+    {type:"application/json"}
+  );
+
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = downloadUrl;
+  link.download = "build-config.json";
+  link.click();
+
+  URL.revokeObjectURL(downloadUrl);
+
+  status.textContent =
+    "Configuration created successfully. The APK build engine will be connected in the next development step. This is not an APK yet.";
+});
+</script>
+
+</body>
+</html>
