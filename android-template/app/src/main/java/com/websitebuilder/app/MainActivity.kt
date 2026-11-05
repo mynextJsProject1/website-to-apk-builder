@@ -4,16 +4,17 @@ package com.websitebuilder.app
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.Context
-import android.content.res.ColorStateList
-import android.graphics.*
-import android.graphics.drawable.ColorDrawable
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
-import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
@@ -24,34 +25,36 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.Toast
-import kotlin.math.*
+import org.json.JSONObject
+import kotlin.math.cos
+import kotlin.math.sin
 
 class MainActivity : Activity() {
 
+    private lateinit var root: FrameLayout
     private lateinit var webView: WebView
-    private lateinit var rootLayout: FrameLayout
-    private lateinit var loadingOverlay: FrameLayout
+    private lateinit var loadingView: LotteryLoadingView
 
     private var appName = "Web2APK"
     private var websiteUrl = ""
-
     private var backButtonEnabled = true
     private var fullscreenEnabled = false
     private var downloadEnabled = true
 
     private var splashStartedAt = 0L
-    private var firstPageReady = false
-    private var splashDismissed = false
+    private var pageLoaded = false
+    private var splashRemoved = false
 
-    private val gold = Color.rgb(212, 165, 65)
-    private val dark = Color.rgb(5, 7, 6)
+    private val handler = Handler(Looper.getMainLooper())
+
+    private val minimumSplashTime = 3500L
+
+    private val hideSplashRunnable = Runnable {
+        removeSplashIfReady()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        window.setBackgroundDrawable(ColorDrawable(dark))
-        window.statusBarColor = dark
-        window.navigationBarColor = dark
 
         if (!loadConfiguration()) return
 
@@ -61,17 +64,18 @@ class MainActivity : Activity() {
             enableFullscreen()
         }
 
-        showSplashScreen(savedInstanceState)
+        splashStartedAt = SystemClock.uptimeMillis()
+
+        createAppLayout(savedInstanceState)
     }
 
     private fun loadConfiguration(): Boolean {
         return try {
-
             val json = assets.open("build-config.json")
                 .bufferedReader()
                 .use { it.readText() }
 
-            val config = org.json.JSONObject(json)
+            val config = JSONObject(json)
 
             websiteUrl = config.optString("website_url")
             appName = config.optString("app_name", "Web2APK")
@@ -96,7 +100,6 @@ class MainActivity : Activity() {
             true
 
         } catch (e: Exception) {
-
             Toast.makeText(
                 this,
                 "App configuration missing or invalid",
@@ -108,102 +111,83 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showSplashScreen(savedInstanceState: Bundle?) {
-        openWebsite(savedInstanceState)
-    }
+    private fun createAppLayout(savedInstanceState: Bundle?) {
 
-    private fun openWebsite(savedInstanceState: Bundle?) {
-
-        splashStartedAt = SystemClock.elapsedRealtime()
-
-        rootLayout = FrameLayout(this)
-        rootLayout.setBackgroundColor(dark)
+        root = FrameLayout(this)
+        root.setBackgroundColor(Color.BLACK)
 
         webView = WebView(this)
-        webView.setBackgroundColor(dark)
-
-        rootLayout.addView(
-            webView,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-        loadingOverlay = FrameLayout(this)
-        loadingOverlay.setBackgroundColor(dark)
-
-        val animation = LotteryLoadingView(this)
-
-        loadingOverlay.addView(
-            animation,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-        rootLayout.addView(
-            loadingOverlay,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-        setContentView(rootLayout)
+        webView.visibility = View.INVISIBLE
 
         setupWebView()
 
-        if (savedInstanceState != null) {
+        root.addView(
+            webView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
 
+        loadingView = LotteryLoadingView(this)
+
+        root.addView(
+            loadingView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        setContentView(root)
+
+        if (savedInstanceState != null) {
             val restored = webView.restoreState(savedInstanceState)
 
             if (restored == null) {
                 webView.loadUrl(websiteUrl)
             }
-
         } else {
             webView.loadUrl(websiteUrl)
         }
+
+        handler.postDelayed(
+            hideSplashRunnable,
+            minimumSplashTime
+        )
     }
 
-    // Minimum 3.5 seconds + actual website loading completion
+    private fun removeSplashIfReady() {
 
-    private fun finishInitialLoading() {
+        if (splashRemoved || isFinishing || isDestroyed) return
 
-        if (firstPageReady) return
+        val elapsed = SystemClock.uptimeMillis() - splashStartedAt
 
-        firstPageReady = true
+        if (!pageLoaded || elapsed < minimumSplashTime) {
+            val remaining = (minimumSplashTime - elapsed).coerceAtLeast(100L)
 
-        val elapsed = SystemClock.elapsedRealtime() - splashStartedAt
-        val remaining = (3500L - elapsed).coerceAtLeast(0L)
+            handler.removeCallbacks(hideSplashRunnable)
+            handler.postDelayed(hideSplashRunnable, remaining)
+            return
+        }
 
-        webView.postDelayed({
+        splashRemoved = true
 
-            if (!isFinishing && !isDestroyed && !splashDismissed) {
+        webView.visibility = View.VISIBLE
 
-                splashDismissed = true
-                loadingOverlay.visibility = View.GONE
-            }
-
-        }, remaining)
+        root.removeView(loadingView)
     }
 
     private fun setupWebView() {
 
         webView.settings.apply {
-
             javaScriptEnabled = true
             domStorageEnabled = true
             loadsImagesAutomatically = true
-
             javaScriptCanOpenWindowsAutomatically = false
             setSupportMultipleWindows(false)
-
             allowFileAccess = false
             allowContentAccess = true
-
             builtInZoomControls = false
             displayZoomControls = false
         }
@@ -211,15 +195,6 @@ class MainActivity : Activity() {
         CookieManager.getInstance().setAcceptCookie(true)
 
         webView.webViewClient = object : WebViewClient() {
-
-            override fun onPageFinished(
-                view: WebView?,
-                url: String?
-            ) {
-                super.onPageFinished(view, url)
-
-                finishInitialLoading()
-            }
 
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
@@ -234,6 +209,16 @@ class MainActivity : Activity() {
                 }
             }
 
+            override fun onPageFinished(
+                view: WebView?,
+                url: String?
+            ) {
+                super.onPageFinished(view, url)
+
+                pageLoaded = true
+                removeSplashIfReady()
+            }
+
             override fun onReceivedError(
                 view: WebView?,
                 request: WebResourceRequest?,
@@ -242,14 +227,8 @@ class MainActivity : Activity() {
                 super.onReceivedError(view, request, error)
 
                 if (request?.isForMainFrame == true) {
-
-                    finishInitialLoading()
-
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Website loading failed. Please try again.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    pageLoaded = true
+                    removeSplashIfReady()
                 }
             }
         }
@@ -268,16 +247,16 @@ class MainActivity : Activity() {
                 url, userAgent, contentDisposition, mimeType, _ ->
 
                 try {
-
                     val uri = Uri.parse(url)
 
-                    if (uri.scheme != "https" && uri.scheme != "http") {
+                    if (uri.scheme != "https" &&
+                        uri.scheme != "http"
+                    ) {
                         Toast.makeText(
                             this,
                             "This download type is not supported",
                             Toast.LENGTH_SHORT
                         ).show()
-
                         return@DownloadListener
                     }
 
@@ -285,17 +264,13 @@ class MainActivity : Activity() {
                         url,
                         contentDisposition,
                         mimeType
-                    ).replace(
-                        Regex("[^a-zA-Z0-9._-]"),
-                        "_"
-                    )
+                    ).replace(Regex("[^a-zA-Z0-9._-]"), "_")
 
                     val request = DownloadManager.Request(uri)
 
                     request.setTitle(fileName)
                     request.setDescription("Downloading from $appName")
                     request.setMimeType(mimeType)
-
                     request.addRequestHeader("User-Agent", userAgent)
 
                     val cookie = CookieManager.getInstance()
@@ -306,7 +281,8 @@ class MainActivity : Activity() {
                     }
 
                     request.setNotificationVisibility(
-                        DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                        DownloadManager.Request
+                            .VISIBILITY_VISIBLE_NOTIFY_COMPLETED
                     )
 
                     request.setDestinationInExternalPublicDir(
@@ -327,7 +303,6 @@ class MainActivity : Activity() {
                     ).show()
 
                 } catch (e: Exception) {
-
                     Toast.makeText(
                         this,
                         "Download failed: ${e.message}",
@@ -338,12 +313,7 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun dp(value: Float): Float {
-        return value * resources.displayMetrics.density
-    }
-
     private fun enableFullscreen() {
-
         window.setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN
@@ -360,7 +330,6 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Android API")
     override fun onBackPressed() {
-
         if (backButtonEnabled &&
             ::webView.isInitialized &&
             webView.canGoBack()
@@ -380,64 +349,45 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(hideSplashRunnable)
 
         if (::webView.isInitialized) {
+            webView.stopLoading()
             webView.destroy()
         }
 
         super.onDestroy()
     }
 
-    // ==========================================
-    // NATIVE GOLD LOTTERY CANVAS ANIMATION
-    // ==========================================
-
-    inner class LotteryLoadingView(context: Context) : View(context) {
+    private class LotteryLoadingView(
+        context: Context
+    ) : View(context) {
 
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val random = java.util.Random(27)
 
-        private val goldLight = Color.rgb(255, 215, 125)
-        private val goldDark = Color.rgb(132, 91, 25)
+        private val gold = Color.rgb(218, 170, 65)
+        private val lightGold = Color.rgb(255, 220, 130)
+        private val darkGold = Color.rgb(115, 77, 22)
+
+        private val startTime = SystemClock.uptimeMillis()
 
         private val balls = listOf(
-            Ball(0.17f, 0.15f, 0.052f, "07", 0.2f),
-            Ball(0.78f, 0.18f, 0.050f, "12", 1.2f),
-            Ball(0.10f, 0.49f, 0.052f, "18", 2.1f),
-            Ball(0.83f, 0.49f, 0.050f, "33", 3.2f),
-            Ball(0.25f, 0.79f, 0.054f, "24", 4.1f),
-            Ball(0.76f, 0.82f, 0.055f, "49", 5.2f)
+            Ball(0.13f, 0.20f, 23f, 1.0f, 8),
+            Ball(0.82f, 0.17f, 17f, 1.4f, 21),
+            Ball(0.22f, 0.73f, 19f, 1.2f, 15),
+            Ball(0.78f, 0.77f, 25f, 0.9f, 33),
+            Ball(0.50f, 0.10f, 13f, 1.7f, 11),
+            Ball(0.92f, 0.48f, 16f, 1.1f, 6),
+            Ball(0.08f, 0.49f, 14f, 1.5f, 27)
         )
 
         private data class Ball(
             val x: Float,
             val y: Float,
             val radius: Float,
-            val number: String,
-            val phase: Float
+            val speed: Float,
+            val number: Int
         )
-
-        private data class Star(
-            val x: Float,
-            val y: Float,
-            val size: Float,
-            val phase: Float
-        )
-
-        private val stars = List(22) {
-            Star(
-                random.nextFloat(),
-                random.nextFloat(),
-                1.5f + random.nextFloat() * 3f,
-                random.nextFloat() * 6.28f
-            )
-        }
-
-        private val startTime = SystemClock.uptimeMillis()
-
-        init {
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
@@ -445,207 +395,148 @@ class MainActivity : Activity() {
             val w = width.toFloat()
             val h = height.toFloat()
 
-            if (w <= 0 || h <= 0) return
+            if (w <= 0f || h <= 0f) return
 
-            val time =
-                (SystemClock.uptimeMillis() - startTime) / 1000f
+            val time = (SystemClock.uptimeMillis() - startTime) / 1000f
 
-            canvas.drawColor(dark)
+            canvas.drawColor(Color.rgb(5, 7, 6))
 
-            drawStars(canvas, w, h, time)
-            drawTickets(canvas, w, h, time)
-            drawBalls(canvas, w, h, time)
+            drawDecorations(canvas, w, h, time)
             drawCenterSpinner(canvas, w, h, time)
 
-            if (visibility == VISIBLE) {
-                postInvalidateOnAnimation()
-            }
+            postInvalidateOnAnimation()
         }
 
-        // Subtle moving stars: approximately 20% opacity
-
-        private fun drawStars(
+        private fun drawDecorations(
             canvas: Canvas,
             w: Float,
             h: Float,
             time: Float
         ) {
 
-            stars.forEach { star ->
+            for (ball in balls) {
 
-                val x = (
-                    star.x + sin(time * 0.18f + star.phase) * 0.025f
-                ) * w
+                val x = w * ball.x +
+                    sin(time * ball.speed) * 18f
 
-                val y = (
-                    star.y + cos(time * 0.15f + star.phase) * 0.025f
-                ) * h
+                val y = h * ball.y +
+                    cos(time * ball.speed * 0.8f) * 24f
 
-                val alpha = (
-                    25 + 15 * (0.5f + 0.5f *
-                        sin(time * 1.2f + star.phase))
-                ).toInt().coerceIn(15, 40)
+                val r = ball.radius *
+                    resources.displayMetrics.density
 
-                paint.color = Color.argb(alpha, 255, 190, 75)
+                paint.color = gold
+                paint.alpha = 48
                 paint.style = Paint.Style.FILL
 
-                val path = Path()
+                canvas.drawCircle(x, y, r, paint)
 
-                for (i in 0 until 10) {
-
-                    val angle = Math.PI * i / 5.0 - Math.PI / 2
-
-                    val radius = if (i % 2 == 0) {
-                        dp(star.size)
-                    } else {
-                        dp(star.size * 0.4f)
-                    }
-
-                    val px = x + cos(angle).toFloat() * radius
-                    val py = y + sin(angle).toFloat() * radius
-
-                    if (i == 0) path.moveTo(px, py)
-                    else path.lineTo(px, py)
-                }
-
-                path.close()
-                canvas.drawPath(path, paint)
-            }
-        }
-
-        // Floating golden lottery tickets
-
-        private fun drawTickets(
-            canvas: Canvas,
-            w: Float,
-            h: Float,
-            time: Float
-        ) {
-
-            val positions = listOf(
-                0.43f to 0.12f,
-                0.16f to 0.68f,
-                0.85f to 0.68f
-            )
-
-            positions.forEachIndexed { index, position ->
-
-                val x = position.first * w +
-                    sin(time * 0.35f + index) * dp(12f)
-
-                val y = position.second * h +
-                    cos(time * 0.30f + index) * dp(12f)
-
-                canvas.save()
-                canvas.rotate(
-                    -25f + sin(time * 0.25f + index) * 7f,
-                    x,
-                    y
-                )
-
+                paint.color = lightGold
+                paint.alpha = 52
                 paint.style = Paint.Style.STROKE
-                paint.strokeWidth = dp(1.5f)
-                paint.color = Color.argb(42, 230, 177, 75)
+                paint.strokeWidth = 1.5f
 
-                val rect = RectF(
-                    x - dp(23f),
-                    y - dp(11f),
-                    x + dp(23f),
-                    y + dp(11f)
-                )
+                canvas.drawCircle(x, y, r, paint)
 
-                canvas.drawRoundRect(
-                    rect,
-                    dp(3f),
-                    dp(3f),
+                paint.style = Paint.Style.FILL
+                paint.color = lightGold
+                paint.alpha = 65
+                paint.textAlign = Paint.Align.CENTER
+                paint.textSize = r * 0.85f
+                paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
+
+                canvas.drawText(
+                    ball.number.toString(),
+                    x,
+                    y + r * 0.30f,
                     paint
                 )
+            }
 
+            drawTicket(
+                canvas,
+                w * 0.16f + sin(time * 0.6f) * 16f,
+                h * 0.37f + cos(time * 0.7f) * 18f,
+                time * 12f
+            )
+
+            drawTicket(
+                canvas,
+                w * 0.82f + cos(time * 0.5f) * 14f,
+                h * 0.60f + sin(time * 0.8f) * 16f,
+                -time * 10f
+            )
+
+            for (i in 0 until 14) {
+                val x = ((i * 79f + time * 13f) % w)
+                val y = ((i * 113f + time * 19f) % h)
+
+                paint.color = lightGold
+                paint.alpha = 35
                 paint.style = Paint.Style.FILL
-                paint.color = Color.argb(45, 255, 195, 85)
 
                 canvas.drawCircle(
                     x,
                     y,
-                    dp(4f),
+                    2f * resources.displayMetrics.density,
                     paint
                 )
-
-                canvas.restore()
             }
         }
 
-        // Smooth moving gold lottery balls
-
-        private fun drawBalls(
+        private fun drawTicket(
             canvas: Canvas,
-            w: Float,
-            h: Float,
-            time: Float
+            x: Float,
+            y: Float,
+            rotation: Float
         ) {
 
-            balls.forEach { ball ->
+            val density = resources.displayMetrics.density
 
-                val x = (
-                    ball.x + sin(time * 0.30f + ball.phase) * 0.025f
-                ) * w
+            val rect = RectF(
+                x - 32f * density,
+                y - 17f * density,
+                x + 32f * density,
+                y + 17f * density
+            )
 
-                val y = (
-                    ball.y + cos(time * 0.25f + ball.phase) * 0.025f
-                ) * h
+            canvas.save()
+            canvas.rotate(rotation, x, y)
 
-                val r = min(w, h) * ball.radius
+            paint.color = gold
+            paint.alpha = 38
+            paint.style = Paint.Style.FILL
 
-                val centerX = x - r * 0.28f
-                val centerY = y - r * 0.35f
+            canvas.drawRoundRect(
+                rect,
+                5f * density,
+                5f * density,
+                paint
+            )
 
-                paint.style = Paint.Style.FILL
+            paint.color = lightGold
+            paint.alpha = 55
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.2f * density
 
-                paint.shader = RadialGradient(
-                    centerX,
-                    centerY,
-                    r * 1.8f,
-                    intArrayOf(
-                        Color.argb(65, 255, 220, 145),
-                        Color.argb(42, 190, 135, 45),
-                        Color.argb(30, 65, 42, 10)
-                    ),
-                    floatArrayOf(0f, 0.55f, 1f),
-                    Shader.TileMode.CLAMP
-                )
+            canvas.drawRoundRect(
+                rect,
+                5f * density,
+                5f * density,
+                paint
+            )
 
-                canvas.drawCircle(x, y, r, paint)
-                paint.shader = null
+            paint.style = Paint.Style.FILL
+            paint.color = lightGold
+            paint.alpha = 65
+            paint.textAlign = Paint.Align.CENTER
+            paint.textSize = 12f * density
+            paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
 
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = dp(1.5f)
-                paint.color = Color.argb(45, 255, 203, 105)
+            canvas.drawText("LOTTO", x, y + 4f * density, paint)
 
-                canvas.drawCircle(x, y, r, paint)
-
-                paint.style = Paint.Style.FILL
-                paint.color = Color.argb(55, 255, 225, 165)
-                paint.textAlign = Paint.Align.CENTER
-                paint.textSize = r * 0.78f
-                paint.typeface = Typeface.create(
-                    "sans-serif",
-                    Typeface.BOLD
-                )
-
-                val fm = paint.fontMetrics
-
-                val baseline = y - (fm.ascent + fm.descent) / 2
-
-                canvas.drawText(
-                    ball.number,
-                    x,
-                    baseline,
-                    paint
-                )
-            }
+            canvas.restore()
         }
-
-        // Center circular spinning gold loading symbol
 
         private fun drawCenterSpinner(
             canvas: Canvas,
@@ -654,68 +545,69 @@ class MainActivity : Activity() {
             time: Float
         ) {
 
+            val density = resources.displayMetrics.density
             val cx = w / 2f
             val cy = h / 2f
 
-            val radius = dp(32f)
-
-            val rotation = (time * 180f) % 360f
+            val radius =  thirtyFive(density)
 
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(4f)
+            paint.strokeWidth = 3.5f * density
             paint.strokeCap = Paint.Cap.ROUND
 
-            val rect = RectF(
+            paint.color = darkGold
+            paint.alpha = 100
+
+            canvas.drawCircle(
+                cx,
+                cy,
+                radius,
+                paint
+            )
+
+            val bounds = RectF(
                 cx - radius,
                 cy - radius,
                 cx + radius,
                 cy + radius
             )
 
-            for (i in 0 until 8) {
+            paint.color = lightGold
+            paint.alpha = 230
 
-                val start = rotation + i * 45f
-
-                val alpha = 45 + i * 24
-
-                paint.color = Color.argb(
-                    alpha.coerceAtMost(235),
-                    255,
-                    190,
-                    85
-                )
-
-                canvas.drawArc(
-                    rect,
-                    start,
-                    23f,
-                    false,
-                    paint
-                )
-            }
-
-            paint.style = Paint.Style.FILL
-            paint.color = Color.argb(22, 255, 190, 85)
-
-            canvas.drawCircle(
-                cx,
-                cy,
-                dp(21f),
+            canvas.drawArc(
+                bounds,
+                time * 180f,
+                105f,
+                false,
                 paint
             )
 
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(1f)
-            paint.color = Color.argb(35, 255, 210, 125)
+            paint.color = gold
+            paint.alpha = 180
 
-            canvas.drawCircle(
-                cx,
-                cy,
-                radius + dp(9f),
+            canvas.drawArc(
+                bounds,
+                -time * 220f + 180f,
+                65f,
+                false,
                 paint
             )
 
             paint.style = Paint.Style.FILL
+            paint.color = lightGold
+            paint.alpha = 230
+
+            canvas.drawCircle(
+                cx,
+                cy,
+                4f * density,
+                paint
+            )
+        }
+
+        private fun thirtyFive(density: Float): Float {
+            return 35f * density
         }
     }
 }
