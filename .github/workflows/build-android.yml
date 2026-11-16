@@ -167,31 +167,20 @@ jobs:
         run: |
           python3 -c "import xml.etree.ElementTree as ET; ET.parse('app/src/main/AndroidManifest.xml'); print('XML is valid')"
 
-      # Keystore Decode (নিশ্চিত করা হয়েছে যাতে কোনো বাড়তি স্পেস না থাকে)
-      - name: Decode Keystore
-        env:
-          ENCODED_STRING: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          echo "$ENCODED_STRING" | tr -d '\n' | base64 --decode > android-template/app/release.keystore
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      # Build Release APK
-      - name: Build Release APK
+      # এখানে সাধারণ Debug APK বিল্ড হবে (কোনো পাসওয়ার্ড লাগবে না)
+      - name: Build APK
         working-directory: ./android-template
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: gradle --no-daemon :app:assembleRelease --stacktrace --info
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
 
-      # Upload APK
+      # APK আপলোড হবে
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Website-Android-Release-APK
-          path: android-template/app/build/outputs/apk/release/app-release.apk
+          name: Website-Android-APK
+          path: android-template/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
