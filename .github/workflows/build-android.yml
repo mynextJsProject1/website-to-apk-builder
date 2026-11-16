@@ -167,7 +167,7 @@ jobs:
         run: |
           python3 -c "import xml.etree.ElementTree as ET; ET.parse('app/src/main/AndroidManifest.xml'); print('XML is valid')"
 
-      # নতুন স্টেপ: Keystore ডিকোড করা
+      # Keystore ডিকোড করা
       - name: Decode Keystore
         env:
           ENCODED_STRING: ${{ secrets.KEYSTORE_BASE64 }}
@@ -179,15 +179,14 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # Debug এর পরিবর্তে Release APK বিল্ড করা
+      # Release APK বিল্ড করা (এখানে :app:assembleRelease করা হয়েছে)
       - name: Build Release APK
-        working-directory: android-template
+        working-directory: ./android-template
         env:
-          KEYSTORE_FILE: "release.keystore"
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle --no-daemon assembleRelease --stacktrace --info
+        run: gradle --no-daemon :app:assembleRelease --stacktrace --info
 
       # Release APK আপলোড করা
       - name: Upload APK
