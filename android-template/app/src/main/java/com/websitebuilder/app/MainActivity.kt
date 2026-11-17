@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -47,7 +48,7 @@ class MainActivity : Activity() {
     private var splashRemoved = false
 
     private val handler = Handler(Looper.getMainLooper())
-    private val minimumSplashTime = 2000L
+    private val minimumSplashTime = 2500L // ২.৫ সেকেন্ড
 
     private val hideSplashRunnable = Runnable {
         removeSplashIfReady()
@@ -76,12 +77,12 @@ class MainActivity : Activity() {
 
             val config = JSONObject(json)
 
-            // URL ডিকোড করা হচ্ছে (যদি Base64 এ থাকে)
+            // URL ডিকোড করা হচ্ছে (Base64 থেকে)
             val rawUrl = config.optString("website_url")
             websiteUrl = try {
                 String(Base64.decode(rawUrl, Base64.DEFAULT))
             } catch (e: Exception) {
-                rawUrl // যদি প্লেইন টেক্সট থাকে, তবে সেটাই ব্যবহার হবে
+                rawUrl
             }
 
             appName = config.optString("app_name", "Web2APK")
@@ -110,7 +111,7 @@ class MainActivity : Activity() {
     private fun createAppLayout(savedInstanceState: Bundle?) {
 
         root = FrameLayout(this)
-        root.setBackgroundColor(Color.WHITE)
+        root.setBackgroundColor(Color.parseColor("#183f35")) // রুট ব্যাকগ্রাউন্ডও সবুজ করে দিলাম
 
         webView = WebView(this)
         webView.visibility = View.INVISIBLE
@@ -172,7 +173,7 @@ class MainActivity : Activity() {
 
         CookieManager.getInstance().setAcceptCookie(true)
 
-        // জাভাস্ক্রিপ্ট ইন্টারফেস (যাতে কাস্টম এরর পেজের রিট্রাই বাটন কাজ করে)
+        // জাভাস্ক্রিপ্ট ইন্টারফেস (Retry বাটনের জন্য)
         webView.addJavascriptInterface(object {
             @JavascriptInterface
             fun retry() {
@@ -199,14 +200,13 @@ class MainActivity : Activity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                // যদি কাস্টম এরর পেজ লোড হয়, তবে স্প্ল্যাশ সরাবে না
                 if (url != "about:blank") {
                     pageLoaded = true
                     removeSplashIfReady()
                 }
             }
 
-            // ইন্টারনেট না থাকলে বা ওয়েবসাইট লোড না হলে এই ফাংশনটি কল হয়
+            // ইন্টারনেট না থাকলে এই ফাংশনটি কল হয়
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
@@ -220,10 +220,10 @@ class MainActivity : Activity() {
         if (downloadEnabled) setupDownload()
     }
 
-    // কাস্টম এরর পেজ ডিজাইন (অ্যাপের মতো দেখতে)
+    // কাস্টম "Lost Internet" এরর পেজ
     private fun showCustomErrorPage() {
         pageLoaded = true
-        removeSplashIfReady() // স্প্ল্যাশ সরিয়ে ফেলবে
+        removeSplashIfReady()
 
         val errorHtml = """
             <!DOCTYPE html>
@@ -243,7 +243,7 @@ class MainActivity : Activity() {
                         text-align: center;
                     }
                     .icon { font-size: 70px; margin-bottom: 15px; }
-                    h2 { color: #183f35; margin-bottom: 10px; font-weight: 600; }
+                    h2 { color: #183f35; margin-bottom: 10px; font-weight: bold; font-size: 24px; }
                     p { color: #666666; font-size: 15px; padding: 0 30px; margin-bottom: 30px; line-height: 1.5; }
                     .btn {
                         background-color: #183f35;
@@ -261,9 +261,9 @@ class MainActivity : Activity() {
             </head>
             <body>
                 <div class="icon">📡</div>
-                <h2>No Internet Connection</h2>
-                <p>Please check your internet connection and try again to continue using the app.</p>
-                <button class="btn" onclick="AndroidApp.retry()">Retry</button>
+                <h2>Lost Internet</h2>
+                <p>Your internet connection is currently offline. Please check your Wi-Fi or mobile data connection and try again.</p>
+                <button class="btn" onclick="AndroidApp.retry()">Try Again</button>
             </body>
             </html>
         """.trimIndent()
@@ -332,10 +332,21 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    // নতুন আপডেট করা লোডিং এনিমেশন ক্লাস
     private class CleanLoadingView(context: Context) : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val startTime = SystemClock.uptimeMillis()
-        private val primaryColor = Color.parseColor("#183f35")
+        
+        private val primaryColor = Color.parseColor("#183f35") // আপনার দেওয়া কালার
+
+        init {
+            // টেক্সট পেইন্ট সেটআপ
+            textPaint.color = Color.WHITE
+            textPaint.textSize = 16f * resources.displayMetrics.density
+            textPaint.textAlign = Paint.Align.CENTER
+            textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
@@ -346,22 +357,27 @@ class MainActivity : Activity() {
             val time = (SystemClock.uptimeMillis() - startTime) / 1000f
             val density = resources.displayMetrics.density
 
-            canvas.drawColor(Color.WHITE)
+            // ১. ব্যাকগ্রাউন্ড কালার (গাঢ় সবুজ)
+            canvas.drawColor(primaryColor)
 
             val cx = w / 2f
             val cy = h / 2f
             val radius = 35f * density
 
+            // ২. স্পিনার (সাদা রঙের)
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 4f * density
             paint.strokeCap = Paint.Cap.ROUND
-            paint.color = primaryColor
-            paint.alpha = 40 
+            paint.color = Color.WHITE
+            paint.alpha = 80 
             canvas.drawCircle(cx, cy, radius, paint)
 
             paint.alpha = 255
             val bounds = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
             canvas.drawArc(bounds, time * 360f, 90f, false, paint)
+
+            // ৩. "Connecting Lott Server.." লেখা
+            canvas.drawText("Connecting Lott Server..", cx, cy + radius + (30f * density), textPaint)
 
             postInvalidateOnAnimation()
         }
