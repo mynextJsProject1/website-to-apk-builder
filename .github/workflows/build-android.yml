@@ -84,6 +84,7 @@ jobs:
           import os
           import json
           import shutil
+          import base64
           from pathlib import Path
           from urllib.parse import urlparse
           from xml.sax.saxutils import escape
@@ -107,9 +108,12 @@ jobs:
 
           shutil.copy2("app-assets/splash.png", assets / "splash.png")
 
+          # URL-টিকে Base64 এ এনকোড করা হচ্ছে
+          encoded_url = base64.b64encode(website_url.encode('utf-8')).decode('utf-8')
+
           config = {
               "app_name": app_name,
-              "website_url": website_url,
+              "website_url": encoded_url,
               "features": {
                   "back_button": os.environ["BACK_BUTTON"].lower() == "true",
                   "fullscreen": os.environ["FULLSCREEN"].lower() == "true",
@@ -172,7 +176,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # সরাসরি Release APK বিল্ড হবে (কোনো ডিকোড করা লাগবে না)
+      # সরাসরি Release APK বিল্ড হবে (যেহেতু ফাইল সরাসরি আপলোড করা আছে)
       - name: Build Release APK
         working-directory: ./android-template
         run: gradle --no-daemon :app:assembleRelease --stacktrace
