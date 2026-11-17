@@ -208,7 +208,13 @@ class MainActivity : Activity() {
             setSupportMultipleWindows(false)
             allowFileAccess = false
             allowContentAccess = true
+            // ওয়েবসাইটের আপডেট সবসময় নতুন করে লোড করার জন্য ক্যাশে মোড আপডেট করা হলো
+            cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
         }
+
+        // অ্যাপ ওপেন হওয়ার সময় ক্যাশে এবং হিস্ট্রি ক্লিয়ার করা হচ্ছে
+        webView.clearCache(true)
+        webView.clearHistory()
 
         CookieManager.getInstance().setAcceptCookie(true)
 
@@ -224,6 +230,8 @@ class MainActivity : Activity() {
                         splashRemoved = false
                         pageLoaded = false
                         waitingForNetwork = false
+                        // রিট্রাই করার সময়ও ক্যাশে ক্লিয়ার করা হচ্ছে
+                        webView.clearCache(true)
                         handler.postDelayed(hideSplashRunnable, minimumSplashTime)
                         webView.loadUrl(websiteUrl)
                     } else {
