@@ -1,4 +1,3 @@
-
 package com.websitebuilder.app
 
 import android.app.Activity
@@ -26,14 +25,12 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.Toast
 import org.json.JSONObject
-import kotlin.math.cos
-import kotlin.math.sin
 
 class MainActivity : Activity() {
 
     private lateinit var root: FrameLayout
     private lateinit var webView: WebView
-    private lateinit var loadingView: LotteryLoadingView
+    private lateinit var loadingView: CleanLoadingView
 
     private var appName = "Web2APK"
     private var websiteUrl = ""
@@ -47,7 +44,7 @@ class MainActivity : Activity() {
 
     private val handler = Handler(Looper.getMainLooper())
 
-    private val minimumSplashTime = 3500L
+    private val minimumSplashTime = 2500L // লোডিং টাইম ২.৫ সেকেন্ড
 
     private val hideSplashRunnable = Runnable {
         removeSplashIfReady()
@@ -114,7 +111,7 @@ class MainActivity : Activity() {
     private fun createAppLayout(savedInstanceState: Bundle?) {
 
         root = FrameLayout(this)
-        root.setBackgroundColor(Color.BLACK)
+        root.setBackgroundColor(Color.WHITE)
 
         webView = WebView(this)
         webView.visibility = View.INVISIBLE
@@ -129,7 +126,8 @@ class MainActivity : Activity() {
             )
         )
 
-        loadingView = LotteryLoadingView(this)
+        // নতুন ক্লিন এনিমেশন ভিউ
+        loadingView = CleanLoadingView(this)
 
         root.addView(
             loadingView,
@@ -359,35 +357,14 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    private class LotteryLoadingView(
-        context: Context
-    ) : View(context) {
+    // নতুন কাস্টম এনিমেশন ক্লাস (কালার: #183f35)
+    private class CleanLoadingView(context: Context) : View(context) {
 
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        private val gold = Color.rgb(218, 170, 65)
-        private val lightGold = Color.rgb(255, 220, 130)
-        private val darkGold = Color.rgb(115, 77, 22)
-
         private val startTime = SystemClock.uptimeMillis()
-
-        private val balls = listOf(
-            Ball(0.13f, 0.20f, 23f, 1.0f, 8),
-            Ball(0.82f, 0.17f, 17f, 1.4f, 21),
-            Ball(0.22f, 0.73f, 19f, 1.2f, 15),
-            Ball(0.78f, 0.77f, 25f, 0.9f, 33),
-            Ball(0.50f, 0.10f, 13f, 1.7f, 11),
-            Ball(0.92f, 0.48f, 16f, 1.1f, 6),
-            Ball(0.08f, 0.49f, 14f, 1.5f, 27)
-        )
-
-        private data class Ball(
-            val x: Float,
-            val y: Float,
-            val radius: Float,
-            val speed: Float,
-            val number: Int
-        )
+        
+        // আপনার দেওয়া কালার কোড
+        private val primaryColor = Color.parseColor("#183f35")
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
@@ -398,216 +375,33 @@ class MainActivity : Activity() {
             if (w <= 0f || h <= 0f) return
 
             val time = (SystemClock.uptimeMillis() - startTime) / 1000f
-
-            canvas.drawColor(Color.rgb(5, 7, 6))
-
-            drawDecorations(canvas, w, h, time)
-            drawCenterSpinner(canvas, w, h, time)
-
-            postInvalidateOnAnimation()
-        }
-
-        private fun drawDecorations(
-            canvas: Canvas,
-            w: Float,
-            h: Float,
-            time: Float
-        ) {
-
-            for (ball in balls) {
-
-                val x = w * ball.x +
-                    sin(time * ball.speed) * 18f
-
-                val y = h * ball.y +
-                    cos(time * ball.speed * 0.8f) * 24f
-
-                val r = ball.radius *
-                    resources.displayMetrics.density
-
-                paint.color = gold
-                paint.alpha = 48
-                paint.style = Paint.Style.FILL
-
-                canvas.drawCircle(x, y, r, paint)
-
-                paint.color = lightGold
-                paint.alpha = 52
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 1.5f
-
-                canvas.drawCircle(x, y, r, paint)
-
-                paint.style = Paint.Style.FILL
-                paint.color = lightGold
-                paint.alpha = 65
-                paint.textAlign = Paint.Align.CENTER
-                paint.textSize = r * 0.85f
-                paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
-
-                canvas.drawText(
-                    ball.number.toString(),
-                    x,
-                    y + r * 0.30f,
-                    paint
-                )
-            }
-
-            drawTicket(
-                canvas,
-                w * 0.16f + sin(time * 0.6f) * 16f,
-                h * 0.37f + cos(time * 0.7f) * 18f,
-                time * 12f
-            )
-
-            drawTicket(
-                canvas,
-                w * 0.82f + cos(time * 0.5f) * 14f,
-                h * 0.60f + sin(time * 0.8f) * 16f,
-                -time * 10f
-            )
-
-            for (i in 0 until 14) {
-                val x = ((i * 79f + time * 13f) % w)
-                val y = ((i * 113f + time * 19f) % h)
-
-                paint.color = lightGold
-                paint.alpha = 35
-                paint.style = Paint.Style.FILL
-
-                canvas.drawCircle(
-                    x,
-                    y,
-                    2f * resources.displayMetrics.density,
-                    paint
-                )
-            }
-        }
-
-        private fun drawTicket(
-            canvas: Canvas,
-            x: Float,
-            y: Float,
-            rotation: Float
-        ) {
-
             val density = resources.displayMetrics.density
 
-            val rect = RectF(
-                x - 32f * density,
-                y - 17f * density,
-                x + 32f * density,
-                y + 17f * density
-            )
+            // ব্যাকগ্রাউন্ড কালার সাদা
+            canvas.drawColor(Color.WHITE)
 
-            canvas.save()
-            canvas.rotate(rotation, x, y)
-
-            paint.color = gold
-            paint.alpha = 38
-            paint.style = Paint.Style.FILL
-
-            canvas.drawRoundRect(
-                rect,
-                5f * density,
-                5f * density,
-                paint
-            )
-
-            paint.color = lightGold
-            paint.alpha = 55
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 1.2f * density
-
-            canvas.drawRoundRect(
-                rect,
-                5f * density,
-                5f * density,
-                paint
-            )
-
-            paint.style = Paint.Style.FILL
-            paint.color = lightGold
-            paint.alpha = 65
-            paint.textAlign = Paint.Align.CENTER
-            paint.textSize = 12f * density
-            paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
-
-            canvas.drawText("LOTTO", x, y + 4f * density, paint)
-
-            canvas.restore()
-        }
-
-        private fun drawCenterSpinner(
-            canvas: Canvas,
-            w: Float,
-            h: Float,
-            time: Float
-        ) {
-
-            val density = resources.displayMetrics.density
             val cx = w / 2f
             val cy = h / 2f
+            val radius = 35f * density
 
-            val radius =  thirtyFive(density)
-
+            // ১. হালকা রঙের রিং (ট্র্যাক)
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 3.5f * density
+            paint.strokeWidth = 4f * density
             paint.strokeCap = Paint.Cap.ROUND
+            paint.color = primaryColor
+            paint.alpha = 40 
+            
+            canvas.drawCircle(cx, cy, radius, paint)
 
-            paint.color = darkGold
-            paint.alpha = 100
+            // ২. ঘোরানো এনিমেশন (স্পিনার)
+            paint.alpha = 255 // ফুল কালার
+            val bounds = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
+            
+            // ৩৬০ ডিগ্রি ঘোরার জন্য
+            canvas.drawArc(bounds, time * 360f, 90f, false, paint)
 
-            canvas.drawCircle(
-                cx,
-                cy,
-                radius,
-                paint
-            )
-
-            val bounds = RectF(
-                cx - radius,
-                cy - radius,
-                cx + radius,
-                cy + radius
-            )
-
-            paint.color = lightGold
-            paint.alpha = 230
-
-            canvas.drawArc(
-                bounds,
-                time * 180f,
-                105f,
-                false,
-                paint
-            )
-
-            paint.color = gold
-            paint.alpha = 180
-
-            canvas.drawArc(
-                bounds,
-                -time * 220f + 180f,
-                65f,
-                false,
-                paint
-            )
-
-            paint.style = Paint.Style.FILL
-            paint.color = lightGold
-            paint.alpha = 230
-
-            canvas.drawCircle(
-                cx,
-                cy,
-                4f * density,
-                paint
-            )
-        }
-
-        private fun thirtyFive(density: Float): Float {
-            return 35f * density
+            // এনিমেশন চলমান রাখার জন্য রিভাইভ করা
+            postInvalidateOnAnimation()
         }
     }
 }
