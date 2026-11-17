@@ -9,6 +9,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -16,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Base64
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
@@ -48,7 +51,7 @@ class MainActivity : Activity() {
     private var splashRemoved = false
 
     private val handler = Handler(Looper.getMainLooper())
-    private val minimumSplashTime = 2500L // ২.৫ সেকেন্ড
+    private val minimumSplashTime = 3100L // ৩.১ সেকেন্ড
 
     private val hideSplashRunnable = Runnable {
         removeSplashIfReady()
@@ -77,7 +80,6 @@ class MainActivity : Activity() {
 
             val config = JSONObject(json)
 
-            // URL ডিকোড করা হচ্ছে (Base64 থেকে)
             val rawUrl = config.optString("website_url")
             websiteUrl = try {
                 String(Base64.decode(rawUrl, Base64.DEFAULT))
@@ -111,7 +113,7 @@ class MainActivity : Activity() {
     private fun createAppLayout(savedInstanceState: Bundle?) {
 
         root = FrameLayout(this)
-        root.setBackgroundColor(Color.parseColor("#183f35")) // রুট ব্যাকগ্রাউন্ডও সবুজ করে দিলাম
+        root.setBackgroundColor(Color.parseColor("#183f35"))
 
         webView = WebView(this)
         webView.visibility = View.INVISIBLE
@@ -146,6 +148,14 @@ class MainActivity : Activity() {
     private fun removeSplashIfReady() {
         if (splashRemoved || isFinishing || isDestroyed) return
 
+        // ইন্টারনেট না থাকলে স্প্ল্যাশ সরাবো না
+        if (!isNetworkAvailable()) {
+            loadingView.showLostInternet()
+            handler.removeCallbacks(hideSplashRunnable)
+            handler.postDelayed(hideSplashRunnable, 500L)
+            return
+        }
+
         val elapsed = SystemClock.uptimeMillis() - splashStartedAt
         if (!pageLoaded || elapsed < minimumSplashTime) {
             val remaining = (minimumSplashTime - elapsed).coerceAtLeast(100L)
@@ -173,13 +183,13 @@ class MainActivity : Activity() {
 
         CookieManager.getInstance().setAcceptCookie(true)
 
-        // জাভাস্ক্রিপ্ট ইন্টারফেস (Retry বাটনের জন্য)
         webView.addJavascriptInterface(object {
             @JavascriptInterface
             fun retry() {
                 runOnUiThread {
                     webView.visibility = View.INVISIBLE
                     loadingView.visibility = View.VISIBLE
+                    loadingView.reset()
                     splashStartedAt = SystemClock.uptimeMillis()
                     splashRemoved = false
                     pageLoaded = false
@@ -206,7 +216,6 @@ class MainActivity : Activity() {
                 }
             }
 
-            // ইন্টারনেট না থাকলে এই ফাংশনটি কল হয়
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
@@ -220,9 +229,15 @@ class MainActivity : Activity() {
         if (downloadEnabled) setupDownload()
     }
 
-    // কাস্টম "Lost Internet" এরর পেজ
     private fun showCustomErrorPage() {
         pageLoaded = true
+
+        // ইন্টারনেট না থাকলে স্প্ল্যাশেই Lost Internet দেখাবো
+        if (!isNetworkAvailable()) {
+            loadingView.showLostInternet()
+            return
+        }
+
         removeSplashIfReady()
 
         val errorHtml = """
@@ -309,6 +324,19 @@ class MainActivity : Activity() {
                 or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
     }
 
+    // রিয়েল-টাইম ইন্টারনেট চেক
+    private fun isNetworkAvailable(): Boolean {
+        return try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(network) ?: return false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     @Deprecated("Deprecated in Android API")
     override fun onBackPressed() {
         if (backButtonEnabled && ::webView.isInitialized && webView.canGoBack()) {
@@ -333,19 +361,38 @@ class MainActivity : Activity() {
     }
 
     // নতুন আপডেট করা লোডিং এনিমেশন ক্লাস
-    private class CleanLoadingView(context: Context) : View(context) {
+    private inner class CleanLoadingView(context: Context) : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val startTime = SystemClock.uptimeMillis()
-        
-        private val primaryColor = Color.parseColor("#183f35") // আপনার দেওয়া কালার
+        private var startTime = SystemClock.uptimeMillis()
+
+        private val primaryColor = Color.parseColor("#183f35")
+
+        // ধাপগুলোর সময় (মিলিসেকেন্ডে)
+        private val phase1End = 2000L  // Connecting Lotto Server (0-2s)
+        private val phase2End = 2600L  // Checking Authentication (2-2.6s)
+        private val phase3End = 3100L  // Success (2.6-3.1s)
+
+        private var lostInternetMode = false
+        private var retryButtonRect = RectF()
 
         init {
-            // টেক্সট পেইন্ট সেটআপ
             textPaint.color = Color.WHITE
             textPaint.textSize = 16f * resources.displayMetrics.density
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+
+        fun reset() {
+            startTime = SystemClock.uptimeMillis()
+            lostInternetMode = false
+            invalidate()
+        }
+
+        fun showLostInternet() {
+            if (lostInternetMode) return
+            lostInternetMode = true
+            invalidate()
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -354,32 +401,133 @@ class MainActivity : Activity() {
             val h = height.toFloat()
             if (w <= 0f || h <= 0f) return
 
-            val time = (SystemClock.uptimeMillis() - startTime) / 1000f
+            val elapsed = SystemClock.uptimeMillis() - startTime
+            val time = elapsed / 1000f
             val density = resources.displayMetrics.density
 
-            // ১. ব্যাকগ্রাউন্ড কালার (গাঢ় সবুজ)
             canvas.drawColor(primaryColor)
 
             val cx = w / 2f
             val cy = h / 2f
             val radius = 35f * density
 
-            // ২. স্পিনার (সাদা রঙের)
+            // Lost Internet মোড
+            if (lostInternetMode) {
+                drawLostInternet(canvas, cx, cy, radius, density)
+                return
+            }
+
+            // স্পিনার
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 4f * density
             paint.strokeCap = Paint.Cap.ROUND
             paint.color = Color.WHITE
-            paint.alpha = 80 
+            paint.alpha = 80
             canvas.drawCircle(cx, cy, radius, paint)
 
             paint.alpha = 255
             val bounds = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
-            canvas.drawArc(bounds, time * 360f, 90f, false, paint)
 
-            // ৩. "Connecting Lott Server.." লেখা
-            canvas.drawText("Connecting Lott Server..", cx, cy + radius + (30f * density), textPaint)
+            // Success ধাপে পুরো বৃত্ত দেখাবো
+            if (elapsed >= phase2End) {
+                canvas.drawCircle(cx, cy, radius, paint)
+                // সবুজ চেকমার্ক
+                val successPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    style = Paint.Style.STROKE
+                    strokeWidth = 5f * density
+                    strokeCap = Paint.Cap.ROUND
+                    strokeJoin = Paint.Join.ROUND
+                }
+                val checkPath = android.graphics.Path().apply {
+                    moveTo(cx - radius * 0.4f, cy)
+                    lineTo(cx - radius * 0.05f, cy + radius * 0.35f)
+                    lineTo(cx + radius * 0.45f, cy - radius * 0.3f)
+                }
+                canvas.drawPath(checkPath, successPaint)
+            } else {
+                canvas.drawArc(bounds, time * 360f, 90f, false, paint)
+            }
+
+            // টেক্সট ধাপ
+            val text: String = when {
+                elapsed < phase1End -> "Connecting Lotto Server.."
+                elapsed < phase2End -> "Checking Authentication"
+                else -> "Success"
+            }
+            canvas.drawText(text, cx, cy + radius + (30f * density), textPaint)
 
             postInvalidateOnAnimation()
+        }
+
+        private fun drawLostInternet(canvas: Canvas, cx: Float, cy: Float, radius: Float, density: Float) {
+            // 📡 আইকন (ইমোজি না এঁকে সিম্পল সিগন্যাল বার)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.WHITE
+
+            // সিগন্যাল বার (৪টি, শেষটা ফাঁকা = নো সিগন্যাল)
+            val barW = 6f * density
+            val gap = 5f * density
+            val totalW = 4 * barW + 3 * gap
+            var bx = cx - totalW / 2f
+            val baseY = cy + radius * 0.3f
+            for (i in 0..3) {
+                val barH = (12f + i * 8f) * density
+                paint.alpha = if (i < 3) 255 else 60
+                canvas.drawRoundRect(
+                    RectF(bx, baseY - barH, bx + barW, baseY),
+                    2f * density, 2f * density, paint
+                )
+                bx += barW + gap
+            }
+            paint.alpha = 255
+
+            // টেক্সট
+            textPaint.textSize = 22f * density
+            canvas.drawText("Lost Internet", cx, cy + radius + 50f * density, textPaint)
+
+            textPaint.textSize = 13f * density
+            textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            canvas.drawText("Please check your connection", cx, cy + radius + 75f * density, textPaint)
+            textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+
+            // রিট্রাই বাটন
+            val btnW = 160f * density
+            val btnH = 44f * density
+            val btnTop = cy + radius + 95f * density
+            retryButtonRect.set(cx - btnW / 2f, btnTop, cx + btnW / 2f, btnTop + btnH)
+
+            paint.style = Paint.Style.FILL
+            paint.color = Color.WHITE
+            canvas.drawRoundRect(retryButtonRect, btnH / 2f, btnH / 2f, paint)
+
+            textPaint.color = primaryColor
+            textPaint.textSize = 15f * density
+            canvas.drawText("Try Again", cx, btnTop + btnH / 2f + 5f * density, textPaint)
+            textPaint.color = Color.WHITE
+            textPaint.textSize = 16f * density
+        }
+
+        @SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (lostInternetMode && event.action == MotionEvent.ACTION_UP) {
+                if (retryButtonRect.contains(event.x, event.y)) {
+                    // রিট্রাই করি
+                    lostInternetMode = false
+                    reset()
+                    if (::webView.isInitialized) {
+                        webView.visibility = View.INVISIBLE
+                        splashRemoved = false
+                        pageLoaded = false
+                        splashStartedAt = SystemClock.uptimeMillis()
+                        handler.removeCallbacks(hideSplashRunnable)
+                        handler.postDelayed(hideSplashRunnable, minimumSplashTime)
+                        webView.loadUrl(websiteUrl)
+                    }
+                    return true
+                }
+            }
+            return super.onTouchEvent(event)
         }
     }
 }
